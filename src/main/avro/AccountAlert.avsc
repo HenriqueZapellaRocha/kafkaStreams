@@ -1,0 +1,8 @@
+{
+  "type": "record",
+  "name": "AccountAlert",
+  "namespace": "com.example",
+  "fields": [
+    { "name": "countId", "type": "string" },
+    { "name": "problem", "type": "string" }
+  ]}

@@ -1,5 +1,6 @@
 package com.example.demo;
 
+import com.example.AccountAlert;
 import com.example.Transaction;
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerde;
 import lombok.extern.slf4j.Slf4j;
@@ -18,12 +19,24 @@ import java.util.Map;
 @Slf4j
 public class Stream {
 
-    SpecificAvroSerde<Transaction> personSerde = createSerde();
+    SpecificAvroSerde<Transaction> transactionSerde = createTransactionSerde();
+    SpecificAvroSerde<AccountAlert> alertSerde = createAccountAlertSerde();
 
 
-    private SpecificAvroSerde<Transaction> createSerde() {
+
+
+    private SpecificAvroSerde<Transaction> createTransactionSerde() {
         
         SpecificAvroSerde<Transaction> serde = new SpecificAvroSerde<>();
+        Map<String, String> serdeConfig = new HashMap<>();
+        serdeConfig.put( "schema.registry.url", "http://localhost:8081" );
+        serde.configure( serdeConfig, false );
+        return serde;
+    }
+    
+    public SpecificAvroSerde<AccountAlert> createAccountAlertSerde() {
+        
+        SpecificAvroSerde<AccountAlert> serde = new SpecificAvroSerde<>();
         Map<String, String> serdeConfig = new HashMap<>();
         serdeConfig.put( "schema.registry.url", "http://localhost:8081" );
         serde.configure( serdeConfig, false );
@@ -35,7 +48,7 @@ public class Stream {
     public KStream<String, Transaction> kafkaStream( StreamsBuilder streamsBuilder ) {
 
         KStream<String, Transaction> productStream = streamsBuilder.stream(
-                "transactions", Consumed.with(Serdes.String(), personSerde));
+                "transactions", Consumed.with(Serdes.String(), transactionSerde));
 
         var validationStream = productStream
                 .peek( ( key,value) -> log.info( "transaction information: {}", value.toString() ) )
@@ -44,10 +57,10 @@ public class Stream {
                 .defaultBranch( Branched.as( "valid" ) );
 
         validationStream.get( "validating-invalid" )
-                            .to("invalid", Produced.with( Serdes.String(), personSerde ));
+                            .to("invalid", Produced.with( Serdes.String(), transactionSerde ));
 
         validationStream.get( "validating-valid" )
-                            .to("valid", Produced.with( Serdes.String(), personSerde ));
+                            .to("valid", Produced.with( Serdes.String(), transactionSerde ));
 
         validationStream.get( "validating-valid" )
                 .filter( ( key, transaction ) -> transaction.getValue() >= 1000 )
@@ -59,7 +72,13 @@ public class Stream {
                 .map( (key, value) -> KeyValue.pair( key.key(), value ) )
                 .filter( (key, value) -> value >= 3 )
                 .peek( ( (key, value) -> log.info( "transaction rejected. Count id: {}", key ) ) )
-                .to( "high-transaction-times", Produced.with( Serdes.String(), Serdes.Long() ) );
+                .mapValues( (readOnlyKey, value) -> AccountAlert.newBuilder()
+                                                                .setCountId( readOnlyKey )
+                                                                .setProblem( "several suspicious transactions " +
+                                                                             "in a short period of time" )
+                                                                .build()
+                )
+                .to( "high-transaction-times", Produced.with( Serdes.String(), alertSerde ) );
 
         validationStream.get( "validating-valid" )
                 .groupByKey()
@@ -79,7 +98,13 @@ public class Stream {
                 .filter( (key, value) -> value.contains( "SUSPICIOUS" ) )
                 .map( (key, value) -> KeyValue.pair(key.key(), "ALERT: Location changed - " + value ) )
                 .peek( (key, value) -> log.info( "country mutation. Count id: {}", key ) )
-                .to("different-country-mutation", Produced.with( Serdes.String(), Serdes.String() ) );
+                .mapValues( (readOnlyKey, value) -> AccountAlert.newBuilder()
+                        .setCountId( readOnlyKey )
+                        .setProblem( "several suspicious transactions " +
+                                "in a short period of time" )
+                        .build()
+                )
+                .to("different-country-mutation", Produced.with( Serdes.String(), alertSerde ) );
         return productStream;
     }
 
