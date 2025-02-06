@@ -1,0 +1,9 @@
+{
+  "type": "record",
+  "name": "Transaction",
+  "namespace": "com.example",
+  "fields": [
+    { "name": "countId", "type": "string" },
+    { "name": "value", "type": "int" },
+    { "name": "country", "type": "string" }
+  ]}
