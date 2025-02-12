@@ -1,12 +1,14 @@
 package com.example.demo;
 
 
+import com.example.AccountAlert;
 import com.example.Transaction;
 import io.confluent.kafka.serializers.KafkaAvroSerializer;
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerde;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.apache.kafka.streams.StreamsConfig;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
@@ -27,7 +29,7 @@ import static org.apache.kafka.streams.StreamsConfig.*;
 @EnableKafkaStreams
 public class KafkaConfig {
 
-    @Bean(name = KafkaStreamsDefaultConfiguration.DEFAULT_STREAMS_CONFIG_BEAN_NAME)
+    @Bean( name = KafkaStreamsDefaultConfiguration.DEFAULT_STREAMS_CONFIG_BEAN_NAME )
     public KafkaStreamsConfiguration kStreamsConfig() {
 
         Map<String, Object> props = new HashMap<>();
@@ -35,8 +37,9 @@ public class KafkaConfig {
         props.put( BOOTSTRAP_SERVERS_CONFIG, "localhost:9094" );
         props.put( "schema.registry.url", "http://localhost:8081" );
         props.put( NUM_STREAM_THREADS_CONFIG, 10 );
-        props.put( DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass()) ;
+        props.put( DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass() ) ;
         props.put( DEFAULT_VALUE_SERDE_CLASS_CONFIG, SpecificAvroSerde.class );
+        props.put( StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, 1000 );
 
         props.put( "specific.avro.reader", "true" );
 
@@ -48,10 +51,10 @@ public class KafkaConfig {
     public ProducerFactory<String, Transaction> producerFactory() {
 
         Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9094");
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class);
-        props.put("schema.registry.url", "http://localhost:8081");
+        props.put( ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9094" );
+        props.put( ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class );
+        props.put( ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaAvroSerializer.class );
+        props.put( "schema.registry.url", "http://localhost:8081" );
 
 
         return new DefaultKafkaProducerFactory<>(props);
@@ -60,6 +63,26 @@ public class KafkaConfig {
     @Bean
     public KafkaTemplate<String, Transaction> kafkaTemplate() {
         return new KafkaTemplate<>( producerFactory() );
+    }
+
+    @Bean
+    public SpecificAvroSerde<Transaction> createTransactionSerde() {
+
+        SpecificAvroSerde<Transaction> serde = new SpecificAvroSerde<>();
+        Map<String, String> serdeConfig = new HashMap<>();
+        serdeConfig.put( "schema.registry.url", "http://localhost:8081" );
+        serde.configure( serdeConfig, false );
+        return serde;
+    }
+
+    @Bean
+    public SpecificAvroSerde<AccountAlert> createAccountAlertSerde() {
+
+        SpecificAvroSerde<AccountAlert> serde = new SpecificAvroSerde<>();
+        Map<String, String> serdeConfig = new HashMap<>();
+        serdeConfig.put( "schema.registry.url", "http://localhost:8081" );
+        serde.configure( serdeConfig, false );
+        return serde;
     }
 
 }

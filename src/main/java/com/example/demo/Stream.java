@@ -3,6 +3,7 @@ package com.example.demo;
 import com.example.AccountAlert;
 import com.example.Transaction;
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerde;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KeyValue;
@@ -17,38 +18,18 @@ import java.util.Map;
 
 @Component
 @Slf4j
+@Data
 public class Stream {
 
-    SpecificAvroSerde<Transaction> transactionSerde = createTransactionSerde();
-    SpecificAvroSerde<AccountAlert> alertSerde = createAccountAlertSerde();
-
-
-
-
-    private SpecificAvroSerde<Transaction> createTransactionSerde() {
-        
-        SpecificAvroSerde<Transaction> serde = new SpecificAvroSerde<>();
-        Map<String, String> serdeConfig = new HashMap<>();
-        serdeConfig.put( "schema.registry.url", "http://localhost:8081" );
-        serde.configure( serdeConfig, false );
-        return serde;
-    }
-    
-    public SpecificAvroSerde<AccountAlert> createAccountAlertSerde() {
-        
-        SpecificAvroSerde<AccountAlert> serde = new SpecificAvroSerde<>();
-        Map<String, String> serdeConfig = new HashMap<>();
-        serdeConfig.put( "schema.registry.url", "http://localhost:8081" );
-        serde.configure( serdeConfig, false );
-        return serde;
-    }
+    private final SpecificAvroSerde<Transaction> transactionSerde;
+    private final SpecificAvroSerde<AccountAlert> alertSerde;
 
 
     @Bean
     public KStream<String, Transaction> kafkaStream( StreamsBuilder streamsBuilder ) {
 
         KStream<String, Transaction> productStream = streamsBuilder.stream(
-                "transactions", Consumed.with(Serdes.String(), transactionSerde));
+                "transactions", Consumed.with( Serdes.String(), transactionSerde ) );
 
         var validationStream = productStream
                 .peek( ( key,value) -> log.info( "transaction information: {}", value.toString() ) )
@@ -65,7 +46,7 @@ public class Stream {
         validationStream.get( "validating-valid" )
                 .filter( ( key, transaction ) -> transaction.getValue() >= 1000 )
                 .groupByKey()
-                .windowedBy( TimeWindows.ofSizeAndGrace( Duration.ofSeconds( 5 ), Duration.ofSeconds( 1 ) ) )
+                .windowedBy( TimeWindows.ofSizeWithNoGrace( Duration.ofSeconds( 3 ) ) )
                 .count()
                 .suppress( Suppressed.untilWindowCloses( Suppressed.BufferConfig.unbounded() ) )
                 .toStream()
@@ -96,13 +77,13 @@ public class Stream {
                 )
                 .toStream()
                 .filter( (key, value) -> value.contains( "SUSPICIOUS" ) )
-                .map( (key, value) -> KeyValue.pair(key.key(), "ALERT: Location changed - " + value ) )
+                .map( (key, value) -> KeyValue.pair( key.key(), "ALERT: Location changed - " + value ) )
                 .peek( (key, value) -> log.info( "country mutation. Count id: {}", key ) )
                 .mapValues( (readOnlyKey, value) -> AccountAlert.newBuilder()
-                        .setCountId( readOnlyKey )
-                        .setProblem( "several suspicious transactions " +
-                                "in a short period of time" )
-                        .build()
+                                                                .setCountId( readOnlyKey )
+                                                                .setProblem( "different country transactions " +
+                                                                             "in a short time" )
+                                                                .build()
                 )
                 .to("different-country-mutation", Produced.with( Serdes.String(), alertSerde ) );
         return productStream;
